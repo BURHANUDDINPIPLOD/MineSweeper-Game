@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:myapp/bomb.dart';
 import 'package:myapp/numberbox.dart';
@@ -12,17 +14,63 @@ class Homepage extends StatefulWidget {
 class _HomepageState extends State<Homepage> {
   int numberofSquares = 9 * 9;
   int numberInEachRow = 9;
-  var squareStatus = [];
+  var squareStatus = []; // Will be list of [int, bool, bool]
+  int numberOfFlagsPlaced = 0;
+
+  void toggleFlag(int index) {
+    if (squareStatus[index][1]) { // If already revealed, do nothing
+      return;
+    }
+    setState(() {
+      if (squareStatus[index][2]) { // If currently flagged
+        squareStatus[index][2] = false; // Unflag
+        numberOfFlagsPlaced--;
+      } else { // If not flagged
+        squareStatus[index][2] = true; // Flag
+        numberOfFlagsPlaced++;
+      }
+    });
+    checkWinner(); // Check if player won after flagging/unflagging
+  }
 
   final List<int> bombLocation = [3, 53, 68, 61, 10];
   bool bombsRevealed = false;
+  int secondsPassed = 0;
+  late Timer gameTimer;
+  bool isTimerRunning = false;
+
+  void startTimer() {
+    if (!isTimerRunning && !bombsRevealed && !playerWon()) { // playerWon() needs to be defined or logic adjusted
+      isTimerRunning = true;
+      gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          secondsPassed++;
+        });
+      });
+    }
+  }
+
+  void stopTimer() {
+    if (isTimerRunning) {
+      gameTimer.cancel();
+      isTimerRunning = false;
+    }
+  }
+
+  void resetTimer() {
+    stopTimer();
+    setState(() {
+      secondsPassed = 0;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     for (int i = 0; i < numberofSquares; i++) {
-      squareStatus.add([0, false]);
+      squareStatus.add([0, false, false]); // [numberOfBombsAround, isRevealed, isFlagged]
     }
+    numberOfFlagsPlaced = 0; // Initialize here
     scanBombs();
   }
 
@@ -30,14 +78,26 @@ class _HomepageState extends State<Homepage> {
     setState(() {
       for (int i = 0; i < numberofSquares; i++) {
         squareStatus[i][1] = false;
+        squareStatus[i][2] = false; // Reset isFlagged
       }
       bombsRevealed = false;
+      numberOfFlagsPlaced = 0; // Reset flag count
     });
+    resetTimer();
   }
 
   void revealBoxNumbers(int index) {
     // Ensure the index is within bounds
     if (index < 0 || index >= numberofSquares) return;
+
+    // If flagged, do nothing
+    if (squareStatus[index][2]) {
+      return;
+    }
+
+    if (!isTimerRunning && !bombsRevealed) {
+      startTimer();
+    }
 
     // If the square contains a number (not zero), reveal it and stop further recursion
     if (squareStatus[index][0] != 0) {
@@ -176,23 +236,52 @@ class _HomepageState extends State<Homepage> {
   }
 
   void playerLost() {
+    stopTimer();
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent closing by tapping outside
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.grey[800],
-          title: Center(
-            child: Text("You Lost !", style: TextStyle(color: Colors.white)),
+          backgroundColor: Colors.blue[700],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.sentiment_very_dissatisfied, color: Colors.white, size: 50),
+              SizedBox(height: 16),
+              Text(
+                "YOU LOST!",
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24),
+              ),
+              SizedBox(height: 8),
+              Text(
+                "Time: $secondsPassed seconds",
+                style: TextStyle(color: Colors.white70, fontSize: 16),
+              ),
+            ],
           ),
           actions: [
-            MaterialButton(
-              color: Colors.grey[100],
-              onPressed: () {
-                restartGame();
-                Navigator.pop(context);
-              },
-              child: Icon(Icons.refresh),
-            ),
+            Center(
+              child: MaterialButton(
+                color: Colors.blue[100],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+                onPressed: () {
+                  restartGame();
+                  Navigator.pop(context);
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh, color: Colors.blue[700]),
+                    SizedBox(width: 8),
+                    Text("PLAY AGAIN", style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            )
           ],
         );
       },
@@ -200,23 +289,52 @@ class _HomepageState extends State<Homepage> {
   }
 
   void playerWon() {
+    stopTimer();
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent closing by tapping outside
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.grey[800],
-          title: Center(
-            child: Text("You Win !", style: TextStyle(color: Colors.white)),
+          backgroundColor: Colors.blue[700],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.emoji_events, color: Colors.amberAccent, size: 50),
+              SizedBox(height: 16),
+              Text(
+                "YOU WON!",
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24),
+              ),
+              SizedBox(height: 8),
+              Text(
+                "Your time: $secondsPassed seconds!",
+                style: TextStyle(color: Colors.white, fontSize: 18), // Slightly more prominent
+              ),
+            ],
           ),
           actions: [
-            MaterialButton(
-              color: Colors.grey[100],
-              onPressed: () {
-                restartGame();
-                Navigator.pop(context);
-              },
-              child: Icon(Icons.refresh),
-            ),
+            Center(
+              child: MaterialButton(
+                color: Colors.blue[100],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+                onPressed: () {
+                  restartGame();
+                  Navigator.pop(context);
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh, color: Colors.blue[700]),
+                    SizedBox(width: 8),
+                    Text("PLAY AGAIN", style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            )
           ],
         );
       },
@@ -239,40 +357,42 @@ class _HomepageState extends State<Homepage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200],
+      backgroundColor: Colors.blue[100], // New background color
       body: Column(
         children: [
           SizedBox(
             height: 150,
-            //color: Colors.grey,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      bombLocation.length.toString(),
-                      style: TextStyle(fontSize: 40),
-                    ),
-                    Text("B O M B"),
-                  ],
-                ),
-                GestureDetector(
-                  onTap: restartGame,
-                  child: Card(
-                    color: Colors.grey[700],
-                    child: Icon(Icons.refresh, color: Colors.white, size: 40),
+            child: Container( // Wrap Row with Container to set background color
+              color: Colors.blue[700], // New top bar color
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        (bombLocation.length - numberOfFlagsPlaced).toString(),
+                        style: TextStyle(fontSize: 40, color: Colors.white), // White text
+                      ),
+                      Text("B O M B", style: TextStyle(color: Colors.white)), // White text
+                    ],
                   ),
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text("0", style: TextStyle(fontSize: 40)),
-                    Text("T I M E"),
-                  ],
-                ),
-              ],
+                  GestureDetector(
+                    onTap: restartGame,
+                    child: Card(
+                      color: Colors.blue[500], // New accent color for refresh button
+                      child: Icon(Icons.refresh, color: Colors.white, size: 40),
+                    ),
+                  ),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(secondsPassed.toString(), style: TextStyle(fontSize: 40, color: Colors.white)), // White text
+                      Text("T I M E", style: TextStyle(color: Colors.white)), // White text
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -284,23 +404,37 @@ class _HomepageState extends State<Homepage> {
               ),
               itemBuilder: (context, index) {
                 if (bombLocation.contains(index)) {
-                  return MyBomb(
-                    revealed: bombsRevealed,
-                    function: () {
-                      setState(() {
-                        bombsRevealed = true;
-                      });
-                      playerLost();
+                  return GestureDetector( // Outer GestureDetector for MyBomb
+                    onLongPress: () {
+                      toggleFlag(index);
                     },
+                    child: MyBomb(
+                      revealed: bombsRevealed,
+                      isFlagged: squareStatus[index][2], // Pass isFlagged
+                      function: () {
+                        if (!squareStatus[index][2]) { // If not flagged
+                           setState(() {
+                            bombsRevealed = true;
+                          });
+                          playerLost();
+                        }
+                      },
+                    ),
                   );
                 } else {
-                  return MyNumberbox(
-                    child: squareStatus[index][0],
-                    revealed: squareStatus[index][1],
-                    function: () {
-                      revealBoxNumbers(index);
-                      checkWinner();
+                  return GestureDetector( // Outer GestureDetector for MyNumberbox
+                    onLongPress: () {
+                      toggleFlag(index);
                     },
+                    child: MyNumberbox(
+                      child: squareStatus[index][0],
+                      revealed: squareStatus[index][1],
+                      isFlagged: squareStatus[index][2], // Pass isFlagged
+                      function: () {
+                        revealBoxNumbers(index);
+                        checkWinner();
+                      },
+                    ),
                   );
                 }
               },
@@ -309,7 +443,10 @@ class _HomepageState extends State<Homepage> {
 
           Padding(
             padding: const EdgeInsets.only(bottom: 40.0),
-            child: Text("C R E A T E D  B Y  B U R H A N"),
+            child: Text(
+              "C R E A T E D  B Y  B U R H A N",
+              style: TextStyle(color: Colors.blueGrey[700]), // New text color
+            ),
           ),
         ],
       ),
